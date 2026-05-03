@@ -1,3 +1,17 @@
+"""
+Indian License Plate Recognition System
+========================================
+VSCode-compatible | YOLOv8 + EasyOCR Pipeline
+
+Requirements (install once):
+    pip install ultralytics easyocr opencv-python kaggle numpy
+
+Setup:
+    1. Place your kaggle.json in the project root (or ~/.kaggle/)
+    2. Run: python license_plate_recognition.py
+    3. To test a single image after training, call test_single_image() at the bottom.
+"""
+
 # ─────────────────────────────────────────────
 # 0. IMPORTS
 # ─────────────────────────────────────────────
@@ -7,7 +21,6 @@ import csv
 import shutil
 import random
 import zipfile
-import subprocess
 import numpy as np
 import cv2
 from pathlib import Path
@@ -39,19 +52,35 @@ def setup_kaggle():
 
 
 def download_dataset():
-    """Download and unzip the Kaggle dataset if not already present."""
+    """
+    Download and unzip the Kaggle dataset using the kaggle Python API directly.
+    This avoids subprocess/PATH issues on Windows.
+    """
     zip_name = "indian-license-plates-with-labels.zip"
 
     if not Path(zip_name).exists():
         print("📥 Downloading dataset from Kaggle...")
-        result = subprocess.run(
-            ["kaggle", "datasets", "download", "-d",
-             "kedarsai/indian-license-plates-with-labels"],
-            capture_output=True, text=True
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"Kaggle download failed:\n{result.stderr}")
-        print("✅ Dataset downloaded.")
+        try:
+            # Use the kaggle Python API directly — no PATH required
+            from kaggle.api.kaggle_api_extended import KaggleApi
+            api = KaggleApi()
+            api.authenticate()
+            api.dataset_download_files(
+                "kedarsai/indian-license-plates-with-labels",
+                path=".",
+                unzip=False
+            )
+            print("✅ Dataset downloaded.")
+        except ImportError:
+            raise ImportError(
+                "kaggle package not found.\n"
+                "Run:  pip install kaggle"
+            )
+        except Exception as e:
+            raise RuntimeError(
+                f"Kaggle download failed: {e}\n\n"
+                "Make sure kaggle.json is in C:\\Users\\<you>\\.kaggle\\kaggle.json"
+            )
     else:
         print("ℹ️  Dataset zip already exists, skipping download.")
 
