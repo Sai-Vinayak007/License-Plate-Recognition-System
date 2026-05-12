@@ -1,20 +1,3 @@
-"""
-Indian License Plate Recognition System
-========================================
-VSCode-compatible | YOLOv8 + EasyOCR Pipeline
-
-Requirements (install once):
-    pip install ultralytics easyocr opencv-python kaggle numpy
-
-Setup:
-    1. Place your kaggle.json in the project root (or ~/.kaggle/)
-    2. Run: python license_plate_recognition.py
-    3. To test a single image after training, call test_single_image() at the bottom.
-"""
-
-# ─────────────────────────────────────────────
-# 0. IMPORTS
-# ─────────────────────────────────────────────
 import os
 import re
 import csv
@@ -26,9 +9,7 @@ import cv2
 from pathlib import Path
 
 
-# ─────────────────────────────────────────────
-# 1. KAGGLE DATASET DOWNLOAD
-# ─────────────────────────────────────────────
+
 def setup_kaggle():
     """Move kaggle.json to the right location."""
     kaggle_dir = Path.home() / ".kaggle"
