@@ -11,7 +11,6 @@ from pathlib import Path
 
 
 def setup_kaggle():
-    """Move kaggle.json to the right location."""
     kaggle_dir = Path.home() / ".kaggle"
     kaggle_dir.mkdir(exist_ok=True)
 
@@ -21,9 +20,9 @@ def setup_kaggle():
     if kaggle_json.exists() and not target.exists():
         shutil.copy(kaggle_json, target)
         target.chmod(0o600)
-        print("✅ kaggle.json moved to ~/.kaggle/")
+        print("kaggle.json moved to ~/.kaggle/")
     elif target.exists():
-        print("ℹ️  kaggle.json already in ~/.kaggle/")
+        print("kaggle.json already in ~/.kaggle/")
     else:
         raise FileNotFoundError(
             "kaggle.json not found!\n"
@@ -33,16 +32,11 @@ def setup_kaggle():
 
 
 def download_dataset():
-    """
-    Download and unzip the Kaggle dataset using the kaggle Python API directly.
-    This avoids subprocess/PATH issues on Windows.
-    """
     zip_name = "indian-license-plates-with-labels.zip"
 
     if not Path(zip_name).exists():
-        print("📥 Downloading dataset from Kaggle...")
+        print("Downloading dataset from Kaggle...")
         try:
-            # Use the kaggle Python API directly — no PATH required
             from kaggle.api.kaggle_api_extended import KaggleApi
             api = KaggleApi()
             api.authenticate()
@@ -51,7 +45,7 @@ def download_dataset():
                 path=".",
                 unzip=False
             )
-            print("✅ Dataset downloaded.")
+            print("Dataset downloaded.")
         except ImportError:
             raise ImportError(
                 "kaggle package not found.\n"
@@ -63,25 +57,19 @@ def download_dataset():
                 "Make sure kaggle.json is in C:\\Users\\<you>\\.kaggle\\kaggle.json"
             )
     else:
-        print("ℹ️  Dataset zip already exists, skipping download.")
+        print("Dataset zip already exists, skipping download.")
 
     if not Path("images").exists():
-        print("📦 Unzipping dataset...")
+        print("Unzipping dataset...")
         with zipfile.ZipFile(zip_name, "r") as zf:
             zf.extractall(".")
-        print("✅ Unzipped successfully.")
+        print("Unzipped successfully.")
     else:
-        print("ℹ️  Dataset already unzipped.")
+        print("Dataset already unzipped.")
 
 
-# ─────────────────────────────────────────────
-# 2. DATASET PREPARATION
-# ─────────────────────────────────────────────
+
 def prepare_dataset(split_ratio: float = 0.8):
-    """
-    Split images/labels into train and val sets (shuffled).
-    Creates the YOLOv8-compatible folder structure.
-    """
     dirs = [
         "datasets/license_plates/images/train",
         "datasets/license_plates/images/val",
@@ -99,8 +87,6 @@ def prepare_dataset(split_ratio: float = 0.8):
         if Path(source_images / f).is_file()
     ]
     label_files = set(os.listdir(source_labels))
-
-    # ✅ FIX: Shuffle before splitting to avoid ordering bias
     random.seed(42)
     random.shuffle(image_files)
 
@@ -132,9 +118,7 @@ def prepare_dataset(split_ratio: float = 0.8):
         "datasets/license_plates/labels/val"
     )
 
-    print(f"✅ Dataset split: {len(train_imgs)} train / {len(val_imgs)} val")
-
-    # Write YAML config
+    print(f"Dataset split: {len(train_imgs)} train / {len(val_imgs)} val")
     yaml_content = """\
 path: datasets/license_plates
 train: images/train
@@ -144,18 +128,14 @@ names: ['license_plate']
 """
     with open("license_plate.yaml", "w") as f:
         f.write(yaml_content)
-    print("✅ license_plate.yaml created.")
+    print("license_plate.yaml created.")
 
 
-# ─────────────────────────────────────────────
-# 3. TRAINING
-# ─────────────────────────────────────────────
+
 def train_model(epochs: int = 50, imgsz: int = 640, batch: int = 16):
-    """Train YOLOv8s on the license plate dataset."""
     from ultralytics import YOLO
 
-    print("\n🚀 Starting training...")
-    # ✅ IMPROVEMENT: Using yolov8s (small) instead of yolov8n (nano) for better accuracy
+    print("\nStarting training...")
     model = YOLO("yolov8s.pt")
 
     model.train(
@@ -163,22 +143,23 @@ def train_model(epochs: int = 50, imgsz: int = 640, batch: int = 16):
         epochs=epochs,
         imgsz=imgsz,
         batch=batch,
-        augment=True,           # ✅ IMPROVEMENT: Built-in data augmentation enabled
+        augment=True,           
         project="runs/detect",
         name="train",
+        device='0',
+        workers=2,        
+        cache=False,
+        save_period=10,
         exist_ok=True
     )
-    print("✅ Training complete.")
+    print("Training complete.")
     print("   Best weights saved to: runs/detect/train/weights/best.pt")
     return model
 
 
-# ─────────────────────────────────────────────
-# 4. VALIDATION  (called ONCE only)
-# ─────────────────────────────────────────────
+
 def validate_model(model):
-    """Run validation once and print key metrics."""
-    print("\n📊 Validating model...")
+    print("\nValidating model...")
     metrics = model.val()
 
     print("\n── Validation Metrics ──────────────────")
@@ -189,22 +170,14 @@ def validate_model(model):
     return metrics
 
 
-# ─────────────────────────────────────────────
-# 5. OCR HELPERS
-# ─────────────────────────────────────────────
 def clean_ocr_text(raw_text: str) -> str:
-    """
-    Post-process OCR output for Indian license plates.
-    Expected format: XX 00 XX 0000  (e.g. KA 05 AB 1234)
-    """
     text = raw_text.upper()
-    text = re.sub(r'[^A-Z0-9 ]', '', text)    # keep alphanumeric + spaces
-    text = re.sub(r'\s+', ' ', text).strip()   # collapse extra whitespace
+    text = re.sub(r'[^A-Z0-9 ]', '', text)    
+    text = re.sub(r'\s+', ' ', text).strip()   
     return text
 
 
 def read_plate_text(reader, cropped_plate: np.ndarray) -> str:
-    """Run EasyOCR on a cropped plate image and return cleaned text."""
     ocr_results = reader.readtext(cropped_plate)
     if not ocr_results:
         return ""
@@ -212,19 +185,12 @@ def read_plate_text(reader, cropped_plate: np.ndarray) -> str:
     return clean_ocr_text(raw)
 
 
-# ─────────────────────────────────────────────
-# 6. BATCH INFERENCE ON VALIDATION SET
-# ─────────────────────────────────────────────
+
 def run_inference_on_val(model, confidence_threshold: float = 0.5):
-    """
-    Run detection + OCR on all validation images.
-    - Saves annotated images to:  runs/detect/output/
-    - Saves results to:           results.csv
-    """
     import easyocr
 
-    print("\n🔍 Running inference on validation set...")
-    reader = easyocr.Reader(['en'], gpu=False)
+    print("\nRunning inference on validation set...")
+    reader = easyocr.Reader(['en'], gpu=True)
 
     val_dir    = Path("datasets/license_plates/images/val")
     output_dir = Path("runs/detect/output")
@@ -242,7 +208,7 @@ def run_inference_on_val(model, confidence_threshold: float = 0.5):
         try:
             img = cv2.imread(str(img_path))
             if img is None:
-                print(f"  ⚠️  Cannot read {img_path.name}, skipping.")
+                print(f"Cannot read {img_path.name}, skipping.")
                 continue
 
             results = model(img_path, verbose=False)
@@ -256,21 +222,20 @@ def run_inference_on_val(model, confidence_threshold: float = 0.5):
             confs    = boxes.conf.tolist()
             best_idx = int(np.argmax(confs))
 
-            # ✅ FIX: Confidence threshold filtering
             if confs[best_idx] < confidence_threshold:
-                print(f"  ⚠️  Low conf ({confs[best_idx]:.2f}): {img_path.name}")
+                print(f"Low conf ({confs[best_idx]:.2f}): {img_path.name}")
                 csv_rows.append({"image": img_path.name, "plate_text": "LOW_CONF"})
                 continue
 
             x1, y1, x2, y2 = map(int, boxes.xyxy[best_idx].tolist())
 
-            # ✅ FIX: Crop the plate before passing to OCR
+
             cropped_plate = img[y1:y2, x1:x2]
             plate_text    = read_plate_text(reader, cropped_plate)
 
-            print(f"  ✅ {img_path.name}  →  [{plate_text}]  (conf {confs[best_idx]:.2f})")
+            print(f"  {img_path.name}  →  [{plate_text}]  (conf {confs[best_idx]:.2f})")
 
-            # Annotate and save image
+
             annotated = img.copy()
             cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(
@@ -282,38 +247,30 @@ def run_inference_on_val(model, confidence_threshold: float = 0.5):
             csv_rows.append({"image": img_path.name, "plate_text": plate_text})
 
         except Exception as e:
-            print(f"  ❌ Error on {img_path.name}: {e}")
+            print(f"Error on {img_path.name}: {e}")
             csv_rows.append({"image": img_path.name, "plate_text": f"ERROR: {e}"})
 
-    # ✅ IMPROVEMENT: Save all results to CSV
     csv_path = Path("results.csv")
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=["image", "plate_text"])
         writer.writeheader()
         writer.writerows(csv_rows)
 
-    print(f"\n✅ Results saved   → {csv_path}")
-    print(f"✅ Images saved    → {output_dir}/")
+    print(f"\nResults saved   → {csv_path}")
+    print(f"Images saved    → {output_dir}/")
 
 
-# ─────────────────────────────────────────────
-# 7. TEST A SINGLE IMAGE  (use this after training)
-# ─────────────────────────────────────────────
+
 def test_single_image(
     image_path: str,
     model_path: str = "runs/detect/train/weights/best.pt",
     confidence_threshold: float = 0.5
 ):
-    """
-    Test the trained model on any image.
-
-    Usage (after training is done):
-        test_single_image("my_car.jpg")
-    """
+    
     import easyocr
     from ultralytics import YOLO
 
-    print(f"\n🖼️  Testing: {image_path}")
+    print(f"\nTesting: {image_path}")
 
     if not Path(model_path).exists():
         raise FileNotFoundError(
@@ -322,7 +279,7 @@ def test_single_image(
         )
 
     model  = YOLO(model_path)
-    reader = easyocr.Reader(['en'], gpu=False)
+    reader = easyocr.Reader(['en'], gpu=True)
 
     img = cv2.imread(image_path)
     if img is None:
@@ -331,7 +288,7 @@ def test_single_image(
     results = model(image_path, verbose=False)
 
     if not results or not results[0].boxes:
-        print("❌ No license plate detected.")
+        print("No license plate detected.")
         return
 
     boxes    = results[0].boxes
@@ -339,19 +296,17 @@ def test_single_image(
     conf     = boxes.conf[best_idx].item()
 
     if conf < confidence_threshold:
-        print(f"⚠️  Detection confidence too low: {conf:.2f}")
+        print(f"Detection confidence too low: {conf:.2f}")
         return
 
     x1, y1, x2, y2 = map(int, boxes.xyxy[best_idx].tolist())
 
-    # ✅ FIX: Crop before OCR
     cropped_plate = img[y1:y2, x1:x2]
     plate_text    = read_plate_text(reader, cropped_plate)
 
-    print(f"✅ Plate detected  (conf: {conf:.2f})")
-    print(f"📋 Recognized Text: {plate_text}")
+    print(f"Plate detected  (conf: {conf:.2f})")
+    print(f"Recognized Text: {plate_text}")
 
-    # Save annotated output next to the source image
     annotated = img.copy()
     cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 255, 0), 2)
     cv2.putText(
@@ -361,34 +316,32 @@ def test_single_image(
     )
     out_path = Path(image_path).stem + "_result.jpg"
     cv2.imwrite(out_path, annotated)
-    print(f"💾 Saved annotated image: {out_path}")
+    print(f"Saved annotated image: {out_path}")
 
 
-# ─────────────────────────────────────────────
-# 8. MAIN  —  full pipeline
-# ─────────────────────────────────────────────
+
 if __name__ == "__main__":
     print("=" * 52)
     print("   Indian License Plate Recognition System")
     print("=" * 52)
 
-    # 1. Setup Kaggle credentials & download data
+
     setup_kaggle()
     download_dataset()
 
-    # 2. Prepare train/val split
+
     prepare_dataset(split_ratio=0.8)
 
-    # 3. Train
-    model = train_model(epochs=50, imgsz=640, batch=16)
 
-    # 4. Validate  (✅ called only once)
+    model = train_model(epochs=50, imgsz=416, batch=4)
+
+
     validate_model(model)
 
-    # 5. Run inference + OCR on validation set
+
     run_inference_on_val(model, confidence_threshold=0.5)
 
-    print("\n🎉 Pipeline complete!")
+    print("\nPipeline complete!")
     print("   Annotated images → runs/detect/output/")
     print("   Results CSV      → results.csv")
     print("   Model weights    → runs/detect/train/weights/best.pt")
